@@ -1,0 +1,19 @@
+# Country routing.
+# Format per line (whitespace-separated):
+#   <code>  <host>
+# - code: short identifier used by --only
+# - host: test DB hostname for that country
+#
+# Shared user/password come from my.cnf [client] — never committed.
+# No default database is configured. SQL scripts should fully-qualify
+# table names (e.g. `mydb`.`users`) or open with `USE mydb;`.
+#
+# Copy this file to countries.conf and replace the example hosts with
+# your real ones. The .example TLD below is RFC 2606 reserved and will
+# never resolve, so leaving placeholders in place is safe.
+
+ng  ng-db.example
+gh  gh-db.example
+ug  ug-db.example
+zm  zm-db.example
+ke  ke-db.example

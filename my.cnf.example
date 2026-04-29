@@ -1,0 +1,5 @@
+[client]
+user     = your_user
+password = "your_password"
+# If the password contains '#', ';', or whitespace it must be double-quoted —
+# MySQL's option-file parser treats unquoted '#' as the start of a comment.
