@@ -1,67 +1,103 @@
 # sqlcast
 
-把同一份 SQL 一次性下发到 `countries.conf` 里所有国家的测试 MySQL,顺序执行,末尾汇总成功/失败。
+[English](README.md) | [中文](README.zh.md)
 
-> ⚠️ `countries.conf` 与 `my.cnf` 含内网 hostname / 密码,**不要提交**(均在 `.gitignore`)。仓库里只入库 `*.example` 模板。
+> Fan out one SQL script to many MySQL hosts — sequentially, with a guard against accidental DROPs.
 
-## 安装
+Run the same SQL across multiple MySQL hosts (typical use case: one test database per country / region) and get a single pass/fail summary at the end. By default refuses `DROP`, `TRUNCATE`, and unbounded `DELETE` / `UPDATE` so a single fat-fingered migration can't sweep every database.
+
+```
+$ ./sqlcast.sh migrations/v1.sql
+running migrations/v1.sql across: ng gh ug zm ke
+
+=== ng (ng-db.example) ===
+=== gh (gh-db.example) ===
+=== ug (ug-db.example) ===
+=== zm (zm-db.example) ===
+=== ke (ke-db.example) ===
+
+--- summary ---
+ok:     ng gh ug zm
+failed: ke
+```
+
+## Quick start
+
+Requires the `mysql` client (macOS: `brew install mysql-client` — keg-only, the script auto-fixes `PATH`; Linux: install `mysql-client` / `default-mysql-client` via your package manager).
 
 ```bash
-brew install mysql-client    # macOS,keg-only;脚本会自动从 brew 路径补 PATH
+git clone <this-repo>
+cd sqlcast
 
-cp countries.conf.example countries.conf   # 替换成真实 host
-cp my.cnf.example my.cnf                    # 填上 user / password
+cp countries.conf.example countries.conf   # replace hosts with your real ones
+cp my.cnf.example my.cnf                   # fill in user / password
 chmod 600 my.cnf
+
+./sqlcast.sh migrations/v1.sql
 ```
 
-默认读 `${SCRIPT_DIR}/my.cnf` 与 `${SCRIPT_DIR}/countries.conf`,分别可用
-`SQLCAST_MY_CNF=` 与 `SQLCAST_COUNTRIES_FILE=` 覆盖。
-
-## 用法
+## Usage
 
 ```bash
-./sqlcast.sh migrations/v1.sql               # 跑 .sql 文件
-./sqlcast.sh                                 # 交互:粘贴 SQL,空行 Enter 执行(或 Ctrl-D)
-echo "SELECT VERSION();" | ./sqlcast.sh      # 管道 / 重定向
-./sqlcast.sh --only=ng,ke migrations/v1.sql  # 只跑指定国家
+./sqlcast.sh migrations/v1.sql               # run a .sql file
+./sqlcast.sh                                 # interactive: paste SQL, blank Enter to execute
+echo "SELECT VERSION();" | ./sqlcast.sh      # piped / redirected stdin
+./sqlcast.sh --only=ng,ke migrations/v1.sql  # restrict to specific countries
+./sqlcast.sh --allow-destructive drop.sql    # explicitly permit destructive SQL
 ```
 
-任一国失败,退出码非零(便于接 CI)。脚本本身不指定默认数据库,SQL 自行 `USE` 或用全限定名。
+The exit code is non-zero if any host fails (CI-friendly). The script does not set a default database — your SQL must `USE` one or fully-qualify table names.
 
-## 破坏性 SQL 守卫
+## Configuration
 
-默认拦截以下语句并退出(码 2)。扫描前会剥除注释和字符串字面量,所以注释里、字符串里出现不会误伤;`/*! … */`、`/*+ … */` 内部会被解包再扫(MySQL 实际会执行这些)。
-
-| 类别 | 拦截 |
+| File | Purpose |
 |---|---|
-| DDL 删除 | `DROP TABLE/DATABASE/SCHEMA/INDEX/VIEW/TRIGGER/FUNCTION/PROCEDURE/EVENT/USER/TABLESPACE/SERVER` |
-| 表级清空 / 改名 | `TRUNCATE [TABLE]`、`RENAME TABLE` |
-| 全表 DML | `DELETE` / `UPDATE` 不带 `WHERE`(逐条扫描,只要有一条不带就整批拒绝) |
+| `countries.conf` | Routing table. One line per host: `<code>  <host>`. `#` comments and blank lines are ignored. `<code>` is what `--only=` accepts. |
+| `my.cnf` | Shared credentials. MySQL option-file format; the `[client]` group provides `user` and `password`. |
 
-确实需要时显式放行:
+Both are gitignored — only `*.example` templates are committed.
+
+Environment variables (default to the script's own directory):
+
+| Variable | Default |
+|---|---|
+| `SQLCAST_COUNTRIES_FILE` | `${SCRIPT_DIR}/countries.conf` |
+| `SQLCAST_MY_CNF` | `${SCRIPT_DIR}/my.cnf` |
+| `SQLCAST_ALLOW_DESTRUCTIVE` | `1` is equivalent to `--allow-destructive` |
+
+## Destructive-SQL guard
+
+The following statements are refused by default (exit code 2). The scanner strips comments and string literals first, so `DROP` inside a comment or string literal won't false-positive; `/*! … */` and `/*+ … */` blocks are unwrapped before scanning, since MySQL actually executes their contents.
+
+| Category | Refused |
+|---|---|
+| DDL deletions | `DROP TABLE/DATABASE/SCHEMA/INDEX/VIEW/TRIGGER/FUNCTION/PROCEDURE/EVENT/USER/TABLESPACE/SERVER` |
+| Table-level wipe / rename | `TRUNCATE [TABLE]`, `RENAME TABLE` |
+| Whole-table DML | `DELETE` / `UPDATE` without `WHERE` (per-statement scan — a single naked statement rejects the whole batch) |
+
+To proceed anyway, pass `--allow-destructive` (or set `SQLCAST_ALLOW_DESTRUCTIVE=1`).
+
+> The guard is a last-resort safety net, not a SQL parser. `ALTER TABLE … DROP COLUMN`, `DELETE … WHERE 1=1`, and outer `DELETE` whose `WHERE` lives only inside a sub-SELECT can still slip through. Review your SQL before running.
+
+## Tests
 
 ```bash
-./sqlcast.sh --allow-destructive drop_old_indexes.sql
-SQLCAST_ALLOW_DESTRUCTIVE=1 ./sqlcast.sh drop_old_indexes.sql
+./tests/test_sqlcast.sh
 ```
 
-> 守卫是最后一道安全网,不是 SQL 解析器。`ALTER TABLE … DROP COLUMN`、`DELETE … WHERE 1=1`、`WHERE` 只出现在子查询里的外层 `DELETE` 等仍可能漏过,执行前请自己确认。
-
-## countries.conf
-
-每行一个国家,空白分隔两字段;`#` 注释、空行忽略。`--only=` 用 `<code>` 过滤。
-
-```
-<code>  <host>
-```
+`mysql` is replaced via a `PATH` stub — no real connections are opened. Includes an interactive-paste regression (requires `expect`; skipped automatically if missing).
 
 ## FAQ
 
-**`ERROR 1045 (28000): Access denied`,但密码确实是对的?**
-MySQL option file 解析器会把行内 `#` 当注释起点——如果 `my.cnf` 里 `password = ...` 含 `#` / `;` / 空格,它只会取 `#` 前那段去认证。用双引号括起即可:
+**`ERROR 1045 (28000): Access denied` even though the password is correct?**
+The MySQL option-file parser treats `#` as the start of an inline comment — if your `my.cnf` `password = ...` line contains `#`, `;`, or whitespace, only the part before `#` is sent for authentication. Double-quote the value:
 
 ```ini
 [client]
 user     = your_user
 password = "your#shared!password"
 ```
+
+## License
+
+MIT — see [LICENSE](LICENSE).
