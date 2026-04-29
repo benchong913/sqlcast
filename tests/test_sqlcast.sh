@@ -107,8 +107,8 @@ assert_contains "$out" "running $tmpfile" "existing file goes through file mode"
 rm -rf "$tmpdir"
 
 # 8. --only filters countries (paired with stdin SQL).
-out="$(echo "SELECT 1" | "$SQLCAST" --only=ng 2>&1)" || true
-assert_contains "$out" "across: ng" "--only=ng filters to ng"
+out="$(echo "SELECT 1" | "$SQLCAST" --only=us 2>&1)" || true
+assert_contains "$out" "across: us" "--only=us filters to us"
 
 # 9. Unknown country code errors out.
 out="$(echo "SELECT 1" | "$SQLCAST" --only=zz 2>&1)" || true
@@ -121,12 +121,12 @@ assert_contains "$out" "more than one SQL source" \
   "two positionals error out"
 
 # 11. mysql is invoked with --defaults-file pointing at the configured my.cnf.
-out="$(echo "SELECT 1" | "$SQLCAST" --only=ng 2>&1)" || true
+out="$(echo "SELECT 1" | "$SQLCAST" --only=us 2>&1)" || true
 assert_contains "$out" "--defaults-file=$TEST_MY_CNF" \
   "mysql receives --defaults-file from SQLCAST_MY_CNF"
 
 # 12. Missing my.cnf errors out.
-out="$(SQLCAST_MY_CNF=/nonexistent/my.cnf "$SQLCAST" --only=ng < /dev/null 2>&1)" || true
+out="$(SQLCAST_MY_CNF=/nonexistent/my.cnf "$SQLCAST" --only=us < /dev/null 2>&1)" || true
 assert_contains "$out" "missing my.cnf" "missing my.cnf errors out"
 
 # 13. Empty --only= value is rejected.
@@ -135,14 +135,14 @@ assert_contains "$out" "--only requires a value" \
   "empty --only value is rejected"
 
 # 14. Duplicate code in --only is rejected.
-out="$(echo "SELECT 1" | "$SQLCAST" --only=ng,ng 2>&1)" || true
-assert_contains "$out" "duplicate code in --only: ng" \
+out="$(echo "SELECT 1" | "$SQLCAST" --only=us,us 2>&1)" || true
+assert_contains "$out" "duplicate code in --only: us" \
   "duplicate --only code is rejected"
 
-# 15. Multi-country --only=ng,ke selects both, in order.
-out="$(echo "SELECT 1" | "$SQLCAST" --only=ng,ke 2>&1)" || true
-assert_contains "$out" "across: ng ke" \
-  "--only=ng,ke selects two countries in order"
+# 15. Multi-country --only=us,in selects both, in order.
+out="$(echo "SELECT 1" | "$SQLCAST" --only=us,in 2>&1)" || true
+assert_contains "$out" "across: us in" \
+  "--only=us,in selects two countries in order"
 
 # 16. World-readable my.cnf is rejected (the user could leak the password).
 BAD_CNF="$(mktemp -t sqlcast_badmycnf.XXXXXX)"
@@ -152,106 +152,106 @@ user = test
 password = test
 CNF
 chmod 644 "$BAD_CNF"
-out="$(SQLCAST_MY_CNF="$BAD_CNF" "$SQLCAST" --only=ng < /dev/null 2>&1)" || true
+out="$(SQLCAST_MY_CNF="$BAD_CNF" "$SQLCAST" --only=us < /dev/null 2>&1)" || true
 rm -f "$BAD_CNF"
 assert_contains "$out" "insecure my.cnf permissions" \
   "world-readable my.cnf is rejected"
 
 # 17. mysql failure is captured: failed summary + exit code 1.
-export SQLCAST_FAIL_HOSTS="ng-db.example"
-out="$(echo "SELECT 1" | "$SQLCAST" --only=ng,ke 2>&1)"; rc=$?
+export SQLCAST_FAIL_HOSTS="us-db.example"
+out="$(echo "SELECT 1" | "$SQLCAST" --only=us,in 2>&1)"; rc=$?
 unset SQLCAST_FAIL_HOSTS
-assert_contains "$out" "failed: ng" "failure path lists failing country"
-assert_contains "$out" "ok:     ke" "failure path still lists passing country"
+assert_contains "$out" "failed: us" "failure path lists failing country"
+assert_contains "$out" "ok:     in" "failure path still lists passing country"
 assert_rc "$rc" 1 "exit code 1 when any country fails"
 
 # 18. All-ok run shows failed: (none) and exits 0.
-out="$(echo "SELECT 1" | "$SQLCAST" --only=ng 2>&1)"; rc=$?
+out="$(echo "SELECT 1" | "$SQLCAST" --only=us 2>&1)"; rc=$?
 assert_contains "$out" "failed: (none)" "summary shows failed: (none) on success"
 assert_rc "$rc" 0 "exit code 0 when all countries succeed"
 
 # --- destructive-SQL guard ---
 
 # 19a. DROP TABLE is refused by default.
-out="$(echo "DROP TABLE users;" | "$SQLCAST" --only=ng 2>&1)"; rc=$?
+out="$(echo "DROP TABLE users;" | "$SQLCAST" --only=us 2>&1)"; rc=$?
 assert_contains "$out" "refusing destructive SQL" \
   "DROP TABLE is refused by default"
 assert_contains "$out" "DROP TABLE" "guard reports the matched keyword"
 assert_rc "$rc" 2 "destructive SQL exits 2"
 
 # 19b. TRUNCATE is refused by default.
-out="$(echo "TRUNCATE TABLE users;" | "$SQLCAST" --only=ng 2>&1)" || true
+out="$(echo "TRUNCATE TABLE users;" | "$SQLCAST" --only=us 2>&1)" || true
 assert_contains "$out" "refusing destructive SQL" \
   "TRUNCATE TABLE is refused by default"
 
 # 19c. RENAME TABLE is refused by default.
-out="$(echo "RENAME TABLE a TO b;" | "$SQLCAST" --only=ng 2>&1)" || true
+out="$(echo "RENAME TABLE a TO b;" | "$SQLCAST" --only=us 2>&1)" || true
 assert_contains "$out" "refusing destructive SQL" \
   "RENAME TABLE is refused by default"
 
 # 19d. --allow-destructive lets DROP through.
-out="$(echo "DROP TABLE users;" | "$SQLCAST" --allow-destructive --only=ng 2>&1)"; rc=$?
-assert_contains "$out" "running stdin across: ng" \
+out="$(echo "DROP TABLE users;" | "$SQLCAST" --allow-destructive --only=us 2>&1)"; rc=$?
+assert_contains "$out" "running stdin across: us" \
   "--allow-destructive permits DROP TABLE"
 assert_rc "$rc" 0 "DROP with --allow-destructive succeeds"
 
 # 19e. SQLCAST_ALLOW_DESTRUCTIVE=1 lets DROP through.
-out="$(echo "DROP TABLE users;" | SQLCAST_ALLOW_DESTRUCTIVE=1 "$SQLCAST" --only=ng 2>&1)"; rc=$?
-assert_contains "$out" "running stdin across: ng" \
+out="$(echo "DROP TABLE users;" | SQLCAST_ALLOW_DESTRUCTIVE=1 "$SQLCAST" --only=us 2>&1)"; rc=$?
+assert_contains "$out" "running stdin across: us" \
   "SQLCAST_ALLOW_DESTRUCTIVE=1 permits DROP TABLE"
 assert_rc "$rc" 0 "DROP with env override succeeds"
 
 # 19f. DROP inside a -- comment must not trip the guard.
-out="$(printf -- '-- DROP TABLE users;\nSELECT 1;\n' | "$SQLCAST" --only=ng 2>&1)"; rc=$?
-assert_contains "$out" "running stdin across: ng" \
+out="$(printf -- '-- DROP TABLE users;\nSELECT 1;\n' | "$SQLCAST" --only=us 2>&1)"; rc=$?
+assert_contains "$out" "running stdin across: us" \
   "DROP inside a -- comment is ignored"
 assert_rc "$rc" 0 "commented DROP is allowed"
 
 # 19g. DROP inside a string literal must not trip the guard.
-out="$(echo "INSERT INTO logs (msg) VALUES ('DROP TABLE users');" | "$SQLCAST" --only=ng 2>&1)"; rc=$?
-assert_contains "$out" "running stdin across: ng" \
+out="$(echo "INSERT INTO logs (msg) VALUES ('DROP TABLE users');" | "$SQLCAST" --only=us 2>&1)"; rc=$?
+assert_contains "$out" "running stdin across: us" \
   "DROP inside a string literal is ignored"
 assert_rc "$rc" 0 "string-literal DROP is allowed"
 
 # 19h. DROP inside an executable conditional comment IS detected
 # (MySQL would actually run it, so the guard must look inside).
-out="$(echo "/*!50000 DROP TABLE users */;" | "$SQLCAST" --only=ng 2>&1)" || true
+out="$(echo "/*!50000 DROP TABLE users */;" | "$SQLCAST" --only=us 2>&1)" || true
 assert_contains "$out" "refusing destructive SQL" \
   "DROP inside /*! ... */ is refused"
 
 # 19i. DELETE without WHERE is refused.
-out="$(echo "DELETE FROM users;" | "$SQLCAST" --only=ng 2>&1)"; rc=$?
+out="$(echo "DELETE FROM users;" | "$SQLCAST" --only=us 2>&1)"; rc=$?
 assert_contains "$out" "DELETE without WHERE" \
   "DELETE without WHERE is refused"
 assert_rc "$rc" 2 "DELETE without WHERE exits 2"
 
 # 19j. DELETE with WHERE passes the guard.
-out="$(echo "DELETE FROM users WHERE id = 1;" | "$SQLCAST" --only=ng 2>&1)"; rc=$?
-assert_contains "$out" "running stdin across: ng" \
+out="$(echo "DELETE FROM users WHERE id = 1;" | "$SQLCAST" --only=us 2>&1)"; rc=$?
+assert_contains "$out" "running stdin across: us" \
   "DELETE with WHERE is allowed"
 assert_rc "$rc" 0 "DELETE with WHERE succeeds"
 
 # 19k. UPDATE without WHERE is refused.
-out="$(echo "UPDATE users SET active = 0;" | "$SQLCAST" --only=ng 2>&1)"; rc=$?
+out="$(echo "UPDATE users SET active = 0;" | "$SQLCAST" --only=us 2>&1)"; rc=$?
 assert_contains "$out" "UPDATE without WHERE" \
   "UPDATE without WHERE is refused"
 assert_rc "$rc" 2 "UPDATE without WHERE exits 2"
 
 # 19l. UPDATE with WHERE passes the guard.
-out="$(echo "UPDATE users SET active = 0 WHERE id = 1;" | "$SQLCAST" --only=ng 2>&1)"; rc=$?
-assert_contains "$out" "running stdin across: ng" \
+out="$(echo "UPDATE users SET active = 0 WHERE id = 1;" | "$SQLCAST" --only=us 2>&1)"; rc=$?
+assert_contains "$out" "running stdin across: us" \
   "UPDATE with WHERE is allowed"
 assert_rc "$rc" 0 "UPDATE with WHERE succeeds"
 
 # 19m. Mixed batch: a safe DELETE followed by an unsafe DELETE is refused
 # on the second statement (per-statement scan, not whole-file scan).
-out="$(printf 'DELETE FROM a WHERE id=1;\nDELETE FROM b;\n' | "$SQLCAST" --only=ng 2>&1)" || true
+out="$(printf 'DELETE FROM a WHERE id=1;\nDELETE FROM b;\n' | "$SQLCAST" --only=us 2>&1)" || true
 assert_contains "$out" "DELETE without WHERE" \
   "per-statement scan flags second naked DELETE"
 
 # 19n. --allow-destructive lets DELETE without WHERE through.
-out="$(echo "DELETE FROM users;" | "$SQLCAST" --allow-destructive --only=ng 2>&1)"; rc=$?
-assert_contains "$out" "running stdin across: ng" \
+out="$(echo "DELETE FROM users;" | "$SQLCAST" --allow-destructive --only=us 2>&1)"; rc=$?
+assert_contains "$out" "running stdin across: us" \
   "--allow-destructive permits naked DELETE"
 assert_rc "$rc" 0 "naked DELETE with --allow-destructive succeeds"
 
@@ -263,7 +263,7 @@ if command -v expect >/dev/null; then
   expect <<EOF >/dev/null
     log_user 0
     set timeout 10
-    spawn $SQLCAST --only=ng
+    spawn $SQLCAST --only=us
     expect "SQL>"
     send -- "SELECT 1;\r"
     send -- "SELECT 2;\r"

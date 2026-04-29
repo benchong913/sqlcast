@@ -8,17 +8,17 @@
 
 ```
 $ ./sqlcast.sh migrations/v1.sql
-running migrations/v1.sql across: ng gh ug zm ke
+running migrations/v1.sql across: us jp de br in
 
-=== ng (ng-db.example) ===
-=== gh (gh-db.example) ===
-=== ug (ug-db.example) ===
-=== zm (zm-db.example) ===
-=== ke (ke-db.example) ===
+=== us (us-db.example) ===
+=== jp (jp-db.example) ===
+=== de (de-db.example) ===
+=== br (br-db.example) ===
+=== in (in-db.example) ===
 
 --- summary ---
-ok:     ng gh ug zm
-failed: ke
+ok:     us jp de br
+failed: in
 ```
 
 ## 快速上手
@@ -42,7 +42,7 @@ chmod 600 my.cnf
 ./sqlcast.sh migrations/v1.sql               # 跑 .sql 文件
 ./sqlcast.sh                                 # 交互:粘贴 SQL,空行 Enter 执行
 echo "SELECT VERSION();" | ./sqlcast.sh      # 管道 / 重定向
-./sqlcast.sh --only=ng,ke migrations/v1.sql  # 只跑指定国家
+./sqlcast.sh --only=us,in migrations/v1.sql  # 只跑指定国家
 ./sqlcast.sh --allow-destructive drop.sql    # 显式放行破坏性 SQL
 ```
 

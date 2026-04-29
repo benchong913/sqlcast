@@ -12,8 +12,8 @@
 # your real ones. The .example TLD below is RFC 2606 reserved and will
 # never resolve, so leaving placeholders in place is safe.
 
-ng  ng-db.example
-gh  gh-db.example
-ug  ug-db.example
-zm  zm-db.example
-ke  ke-db.example
+us  us-db.example
+jp  jp-db.example
+de  de-db.example
+br  br-db.example
+in  in-db.example

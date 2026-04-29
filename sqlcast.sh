@@ -35,7 +35,7 @@ Options:
 
 Examples:
   $(basename "$0") migrations/v1.sql
-  $(basename "$0") --only=ng,ke migrations/v1.sql
+  $(basename "$0") --only=us,in migrations/v1.sql
   $(basename "$0")                    # paste SQL, blank Enter to execute
   echo "SELECT VERSION();" | $(basename "$0")
 EOF

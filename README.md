@@ -8,17 +8,17 @@ Run the same SQL across multiple MySQL hosts (typical use case: one test databas
 
 ```
 $ ./sqlcast.sh migrations/v1.sql
-running migrations/v1.sql across: ng gh ug zm ke
+running migrations/v1.sql across: us jp de br in
 
-=== ng (ng-db.example) ===
-=== gh (gh-db.example) ===
-=== ug (ug-db.example) ===
-=== zm (zm-db.example) ===
-=== ke (ke-db.example) ===
+=== us (us-db.example) ===
+=== jp (jp-db.example) ===
+=== de (de-db.example) ===
+=== br (br-db.example) ===
+=== in (in-db.example) ===
 
 --- summary ---
-ok:     ng gh ug zm
-failed: ke
+ok:     us jp de br
+failed: in
 ```
 
 ## Quick start
@@ -42,7 +42,7 @@ chmod 600 my.cnf
 ./sqlcast.sh migrations/v1.sql               # run a .sql file
 ./sqlcast.sh                                 # interactive: paste SQL, blank Enter to execute
 echo "SELECT VERSION();" | ./sqlcast.sh      # piped / redirected stdin
-./sqlcast.sh --only=ng,ke migrations/v1.sql  # restrict to specific countries
+./sqlcast.sh --only=us,in migrations/v1.sql  # restrict to specific countries
 ./sqlcast.sh --allow-destructive drop.sql    # explicitly permit destructive SQL
 ```
 
