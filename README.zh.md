@@ -31,7 +31,7 @@ cd sqlcast
 
 cp countries.conf.example countries.conf   # 替换 host 为真实地址
 cp my.cnf.example my.cnf                   # 填 user / password
-chmod 600 my.cnf
+chmod 600 my.cnf                           # 必填 —— 权限不对脚本会拒绝运行
 
 ./sqlcast.sh migrations/v1.sql
 ```
@@ -47,7 +47,13 @@ echo "SELECT VERSION();" | ./sqlcast.sh      # 管道 / 重定向
 ./sqlcast.sh --continue-on-error seed.sql    # 单条出错不要中断后续
 ```
 
-任一国失败退出码非零(便于接 CI)。脚本不指定默认数据库,SQL 自行 `USE` 或用全限定名。
+脚本不指定默认数据库,SQL 自行 `USE` 或用全限定名。
+
+| 退出码 | 含义 |
+|---|---|
+| `0` | 所有 host 成功 |
+| `1` | 有 host 失败或 partial |
+| `2` | 用法错误或破坏性 SQL 被拦 |
 
 ### 出错继续(continue-on-error)
 
@@ -69,14 +75,16 @@ failed: (none)
 
 两份都在 `.gitignore`,仓库里只入库 `*.example` 模板。
 
-环境变量(默认指向脚本同目录):
+环境变量:
 
-| 变量 | 默认 |
+| 变量 | 说明 |
 |---|---|
-| `SQLCAST_COUNTRIES_FILE` | `${SCRIPT_DIR}/countries.conf` |
-| `SQLCAST_MY_CNF` | `${SCRIPT_DIR}/my.cnf` |
-| `SQLCAST_ALLOW_DESTRUCTIVE` | `1` 等价于 `--allow-destructive` |
-| `SQLCAST_CONTINUE_ON_ERROR` | `1` 等价于 `--continue-on-error` |
+| `SQLCAST_COUNTRIES_FILE` | 路由表路径(默认 `${SCRIPT_DIR}/countries.conf`) |
+| `SQLCAST_MY_CNF` | 凭证文件路径(默认 `${SCRIPT_DIR}/my.cnf`) |
+| `SQLCAST_ALLOW_DESTRUCTIVE` | 设为 `1` 放行破坏性 SQL(等价 `--allow-destructive`) |
+| `SQLCAST_CONTINUE_ON_ERROR` | 设为 `1` 出错继续(等价 `--continue-on-error`) |
+
+连接始终带上 `--ssl-mode=REQUIRED`,目标 MySQL 必须支持 TLS。
 
 ### 单 host 凭证覆盖
 

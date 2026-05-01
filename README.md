@@ -31,7 +31,7 @@ cd sqlcast
 
 cp countries.conf.example countries.conf   # replace hosts with your real ones
 cp my.cnf.example my.cnf                   # fill in user / password
-chmod 600 my.cnf
+chmod 600 my.cnf                           # required — sqlcast refuses to run otherwise
 
 ./sqlcast.sh migrations/v1.sql
 ```
@@ -44,10 +44,16 @@ chmod 600 my.cnf
 echo "SELECT VERSION();" | ./sqlcast.sh      # piped / redirected stdin
 ./sqlcast.sh --only=us,in migrations/v1.sql  # restrict to specific countries
 ./sqlcast.sh --allow-destructive drop.sql    # explicitly permit destructive SQL
-./sqlcast.sh --continue-on-error seed.sql    # don't stop on the first row error
+./sqlcast.sh --continue-on-error seed.sql    # keep running past statement errors
 ```
 
-The exit code is non-zero if any host fails (CI-friendly). The script does not set a default database — your SQL must `USE` one or fully-qualify table names.
+The script does not set a default database — your SQL must `USE` one or fully-qualify table names.
+
+| Exit | Meaning |
+|---|---|
+| `0` | All hosts succeeded |
+| `1` | One or more hosts failed or partial |
+| `2` | Usage error or destructive SQL refused |
 
 ### Continue on error
 
@@ -69,14 +75,16 @@ failed: (none)
 
 Both are gitignored — only `*.example` templates are committed.
 
-Environment variables (default to the script's own directory):
+Environment variables:
 
-| Variable | Default |
+| Variable | Description |
 |---|---|
-| `SQLCAST_COUNTRIES_FILE` | `${SCRIPT_DIR}/countries.conf` |
-| `SQLCAST_MY_CNF` | `${SCRIPT_DIR}/my.cnf` |
-| `SQLCAST_ALLOW_DESTRUCTIVE` | `1` is equivalent to `--allow-destructive` |
-| `SQLCAST_CONTINUE_ON_ERROR` | `1` is equivalent to `--continue-on-error` |
+| `SQLCAST_COUNTRIES_FILE` | Routing-table path (default `${SCRIPT_DIR}/countries.conf`) |
+| `SQLCAST_MY_CNF` | Credentials-file path (default `${SCRIPT_DIR}/my.cnf`) |
+| `SQLCAST_ALLOW_DESTRUCTIVE` | Set to `1` to permit destructive SQL (same as `--allow-destructive`) |
+| `SQLCAST_CONTINUE_ON_ERROR` | Set to `1` to keep running past errors (same as `--continue-on-error`) |
+
+Connections always include `--ssl-mode=REQUIRED`; the target MySQL must accept TLS.
 
 ### Per-host credential override
 
