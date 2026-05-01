@@ -44,9 +44,21 @@ chmod 600 my.cnf
 echo "SELECT VERSION();" | ./sqlcast.sh      # 管道 / 重定向
 ./sqlcast.sh --only=us,in migrations/v1.sql  # 只跑指定国家
 ./sqlcast.sh --allow-destructive drop.sql    # 显式放行破坏性 SQL
+./sqlcast.sh --continue-on-error seed.sql    # 单条出错不要中断后续
 ```
 
 任一国失败退出码非零(便于接 CI)。脚本不指定默认数据库,SQL 自行 `USE` 或用全限定名。
+
+### 出错继续(continue-on-error)
+
+`mysql` 默认遇到第一条错误就中止整批,前面已 commit 的留下、后面的丢掉。批量 seeding / 清理 / 幂等导入这种「跳过坏行就好」的场景,加 `--continue-on-error`(或 `SQLCAST_CONTINUE_ON_ERROR=1`),脚本会透传 `--force` 给 `mysql`。任意一台 host 在 stderr 出过 `ERROR` 都会被归到 `partial` 桶并附错误条数;只要有 partial 或 failed,退出码就是 1:
+
+```
+--- summary ---
+ok:     us jp
+partial: in(3)
+failed: (none)
+```
 
 ## 配置
 
@@ -64,6 +76,7 @@ echo "SELECT VERSION();" | ./sqlcast.sh      # 管道 / 重定向
 | `SQLCAST_COUNTRIES_FILE` | `${SCRIPT_DIR}/countries.conf` |
 | `SQLCAST_MY_CNF` | `${SCRIPT_DIR}/my.cnf` |
 | `SQLCAST_ALLOW_DESTRUCTIVE` | `1` 等价于 `--allow-destructive` |
+| `SQLCAST_CONTINUE_ON_ERROR` | `1` 等价于 `--continue-on-error` |
 
 ## 破坏性 SQL 守卫
 

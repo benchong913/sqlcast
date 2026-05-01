@@ -19,7 +19,7 @@ MY_CNF="${SQLCAST_MY_CNF:-${SCRIPT_DIR}/my.cnf}"
 
 usage() {
   cat <<EOF
-Usage: $(basename "$0") [--only=LIST] [--allow-destructive] [<sql-file>]
+Usage: $(basename "$0") [--only=LIST] [--allow-destructive] [--continue-on-error] [<sql-file>]
 
 If a positional argument is given it must be an existing file. With no
 positional, SQL is read from stdin: on a terminal, lines are collected
@@ -31,6 +31,11 @@ Options:
   --allow-destructive   Permit DROP / TRUNCATE / RENAME TABLE and DELETE / UPDATE
                         without WHERE (all refused by default). Equivalent to
                         SQLCAST_ALLOW_DESTRUCTIVE=1.
+  --continue-on-error   Pass --force to mysql so a failing statement does not
+                        abort the rest on the same host. Hosts whose run
+                        emitted any ERROR are reported as 'partial' in the
+                        summary, and the script exits 1 if any were partial
+                        or failed. Equivalent to SQLCAST_CONTINUE_ON_ERROR=1.
   -h, --help            Show this help
 
 Examples:
@@ -44,13 +49,16 @@ EOF
 only=""
 positional=""
 allow_destructive=0
+continue_on_error=0
 [[ "${SQLCAST_ALLOW_DESTRUCTIVE:-}" == "1" ]] && allow_destructive=1
+[[ "${SQLCAST_CONTINUE_ON_ERROR:-}" == "1" ]] && continue_on_error=1
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --only=*)             only="${1#--only=}"
                           [[ -n "$only" ]] || { echo "--only requires a value" >&2; exit 2; }
                           shift ;;
     --allow-destructive)  allow_destructive=1; shift ;;
+    --continue-on-error)  continue_on_error=1; shift ;;
     -h|--help)            usage; exit 0 ;;
     -*)                   echo "unknown flag: $1" >&2; usage >&2; exit 2 ;;
     *)
@@ -87,7 +95,8 @@ command -v mysql >/dev/null || {
 sql_path=""
 sql_label=""
 cleanup_path=""
-trap '[[ -n "$cleanup_path" ]] && rm -f "$cleanup_path"' EXIT
+err_dir=""
+trap '[[ -n "$cleanup_path" ]] && rm -f "$cleanup_path"; [[ -n "$err_dir" ]] && rm -rf "$err_dir"' EXIT
 
 if [[ -n "$positional" ]]; then
   [[ -f "$positional" ]] || { echo "file not found: $positional" >&2; exit 1; }
@@ -219,19 +228,44 @@ for e in "${selected[@]}"; do codes_only+=("${e%%|*}"); done
 echo "running $sql_label across: ${codes_only[*]}"
 
 ok=()
+partial=()
 failed=()
+
+# Under --continue-on-error mysql --force keeps running past errors and
+# typically still exits 0, so the per-host stderr is the only signal that
+# anything went wrong. Capture it, count `^ERROR` lines, and split the
+# zero-exit hosts into ok vs partial.
+if [[ "$continue_on_error" -eq 1 ]]; then
+  err_dir="$(mktemp -d -t sqlcast_err.XXXXXX)"
+fi
+
 for e in "${selected[@]}"; do
   IFS='|' read -r code host <<< "$e"
   printf '\n=== %s (%s) ===\n' "$code" "$host"
-  if mysql --defaults-file="$MY_CNF" --ssl-mode=REQUIRED --host="$host" < "$sql_path"; then
-    ok+=("$code")
+  mysql_args=(--defaults-file="$MY_CNF" --ssl-mode=REQUIRED --host="$host")
+  err_count=0
+  if [[ "$continue_on_error" -eq 1 ]]; then
+    mysql_args+=(--force)
+    err_file="${err_dir}/${code}.err"
+    if mysql "${mysql_args[@]}" < "$sql_path" 2> "$err_file"; then rc=0; else rc=$?; fi
+    cat "$err_file" >&2
+    err_count=$(grep -c '^ERROR' "$err_file" 2>/dev/null || true)
   else
+    if mysql "${mysql_args[@]}" < "$sql_path"; then rc=0; else rc=$?; fi
+  fi
+
+  if [[ "$rc" -ne 0 ]]; then
     failed+=("$code")
+  elif [[ "${err_count:-0}" -gt 0 ]]; then
+    partial+=("${code}(${err_count})")
+  else
+    ok+=("$code")
   fi
 done
 
 printf '\n--- summary ---\n'
 printf 'ok:     %s\n' "${ok[*]:-(none)}"
+[[ "${#partial[@]}" -gt 0 ]] && printf 'partial: %s\n' "${partial[*]}"
 printf 'failed: %s\n' "${failed[*]:-(none)}"
-[[ "${#failed[@]}" -gt 0 ]] && exit 1
+[[ "${#failed[@]}" -gt 0 || "${#partial[@]}" -gt 0 ]] && exit 1
 exit 0

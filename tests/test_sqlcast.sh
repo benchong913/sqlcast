@@ -35,6 +35,18 @@ assert_rc() {
   fi
 }
 
+assert_not_contains() {
+  local haystack="$1" needle="$2" name="$3"
+  if [[ "$haystack" != *"$needle"* ]]; then
+    pass=$((pass + 1))
+    printf 'ok   - %s\n' "$name"
+  else
+    fail=$((fail + 1))
+    printf 'FAIL - %s\n      must not contain: %s\n      got: %s\n' \
+      "$name" "$needle" "$haystack"
+  fi
+}
+
 STUB_DIR="$(mktemp -d -t sqlcast_stub.XXXXXX)"
 TEST_MY_CNF="$(mktemp -t sqlcast_mycnf.XXXXXX)"
 INPUT_LOG="$(mktemp -t sqlcast_input.XXXXXX)"
@@ -56,6 +68,18 @@ for arg in "$@"; do
 done
 case ",${SQLCAST_FAIL_HOSTS:-}," in
   *",${host},"*) exit 1 ;;
+esac
+# Hosts in SQLCAST_PARTIAL_HOSTS emit N synthetic ERROR lines on stderr
+# but still exit 0 — mimics how `mysql --force` continues past failures.
+errs="${SQLCAST_PARTIAL_ERRS:-2}"
+case ",${SQLCAST_PARTIAL_HOSTS:-}," in
+  *",${host},"*)
+    i=1
+    while [[ "$i" -le "$errs" ]]; do
+      printf 'ERROR 1062 (23000) at line %d: stub partial err %d\n' "$i" "$i" >&2
+      i=$((i + 1))
+    done
+    ;;
 esac
 exit 0
 STUB
@@ -278,6 +302,68 @@ EOF
 else
   printf 'skip - expect not installed; multi-line paste test skipped\n'
 fi
+
+# --- continue-on-error ---
+
+# 20a. Default mode (no flag) must NOT pass --force to mysql.
+out="$(echo "SELECT 1" | "$SQLCAST" --only=us 2>&1)" || true
+assert_not_contains "$out" "--force" \
+  "default mode does not pass --force to mysql"
+
+# 20b. --continue-on-error passes --force to mysql.
+out="$(echo "SELECT 1" | "$SQLCAST" --continue-on-error --only=us 2>&1)"; rc=$?
+assert_contains "$out" "--force" \
+  "--continue-on-error passes --force to mysql"
+assert_rc "$rc" 0 "clean run with --continue-on-error exits 0"
+
+# 20c. SQLCAST_CONTINUE_ON_ERROR=1 acts like the flag.
+out="$(echo "SELECT 1" | SQLCAST_CONTINUE_ON_ERROR=1 "$SQLCAST" --only=us 2>&1)"
+assert_contains "$out" "--force" \
+  "SQLCAST_CONTINUE_ON_ERROR=1 passes --force"
+
+# 20d. Partial host (errors on stderr but exit 0) is classified partial.
+export SQLCAST_PARTIAL_HOSTS="us-db.example"
+out="$(echo "SELECT 1" | "$SQLCAST" --continue-on-error --only=us,in 2>&1)"; rc=$?
+unset SQLCAST_PARTIAL_HOSTS
+assert_contains "$out" "partial: us(2)" \
+  "partial host shown with error count"
+assert_contains "$out" "ok:     in" \
+  "non-partial host stays in ok bucket"
+assert_contains "$out" "failed: (none)" \
+  "partial does not pollute the failed bucket"
+assert_rc "$rc" 1 "exit 1 when any host has partial failures"
+
+# 20e. Partial count reflects the number of ERROR lines emitted.
+export SQLCAST_PARTIAL_HOSTS="us-db.example"
+export SQLCAST_PARTIAL_ERRS=5
+out="$(echo "SELECT 1" | "$SQLCAST" --continue-on-error --only=us 2>&1)"; rc=$?
+unset SQLCAST_PARTIAL_HOSTS SQLCAST_PARTIAL_ERRS
+assert_contains "$out" "partial: us(5)" \
+  "partial count tracks ERROR line count"
+assert_rc "$rc" 1 "partial-only run exits 1"
+
+# 20f. Clean --continue-on-error run: no partial line, exit 0.
+out="$(echo "SELECT 1" | "$SQLCAST" --continue-on-error --only=us 2>&1)"; rc=$?
+assert_not_contains "$out" "partial:" \
+  "no partial line when no errors emitted"
+assert_rc "$rc" 0 "clean continue-on-error run exits 0"
+
+# 20g. Without --continue-on-error, partial-style stderr is not classified
+# (the stub still emits ERROR lines, but no --force means they wouldn't
+# happen in real life; we just verify default summary stays 2-bucket).
+export SQLCAST_PARTIAL_HOSTS="us-db.example"
+out="$(echo "SELECT 1" | "$SQLCAST" --only=us 2>&1)"; rc=$?
+unset SQLCAST_PARTIAL_HOSTS
+assert_not_contains "$out" "partial:" \
+  "default mode never produces a partial line"
+
+# 20h. Hard failure still wins over partial classification.
+export SQLCAST_FAIL_HOSTS="us-db.example"
+out="$(echo "SELECT 1" | "$SQLCAST" --continue-on-error --only=us,in 2>&1)"; rc=$?
+unset SQLCAST_FAIL_HOSTS
+assert_contains "$out" "failed: us" \
+  "rc!=0 host goes to failed even with --continue-on-error"
+assert_rc "$rc" 1 "failed host exits 1 under --continue-on-error"
 
 printf '\n--- %d passed, %d failed ---\n' "$pass" "$fail"
 [[ "$fail" -eq 0 ]] || exit 1

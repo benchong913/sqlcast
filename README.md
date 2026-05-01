@@ -44,9 +44,21 @@ chmod 600 my.cnf
 echo "SELECT VERSION();" | ./sqlcast.sh      # piped / redirected stdin
 ./sqlcast.sh --only=us,in migrations/v1.sql  # restrict to specific countries
 ./sqlcast.sh --allow-destructive drop.sql    # explicitly permit destructive SQL
+./sqlcast.sh --continue-on-error seed.sql    # don't stop on the first row error
 ```
 
 The exit code is non-zero if any host fails (CI-friendly). The script does not set a default database — your SQL must `USE` one or fully-qualify table names.
+
+### Continue on error
+
+By default, `mysql` aborts a batch on the first error, leaving earlier statements committed (autocommit) and later ones unrun. For idempotent batch loads (seeding, cleanup, bulk inserts) where you'd rather skip bad rows than abort, pass `--continue-on-error` (or set `SQLCAST_CONTINUE_ON_ERROR=1`). It transparently appends `--force` to the `mysql` invocation. Hosts that emitted any `ERROR` line on stderr are reported in a `partial` bucket with the error count, and the script exits 1 if any host was partial or failed:
+
+```
+--- summary ---
+ok:     us jp
+partial: in(3)
+failed: (none)
+```
 
 ## Configuration
 
@@ -64,6 +76,7 @@ Environment variables (default to the script's own directory):
 | `SQLCAST_COUNTRIES_FILE` | `${SCRIPT_DIR}/countries.conf` |
 | `SQLCAST_MY_CNF` | `${SCRIPT_DIR}/my.cnf` |
 | `SQLCAST_ALLOW_DESTRUCTIVE` | `1` is equivalent to `--allow-destructive` |
+| `SQLCAST_CONTINUE_ON_ERROR` | `1` is equivalent to `--continue-on-error` |
 
 ## Destructive-SQL guard
 
