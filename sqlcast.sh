@@ -197,6 +197,11 @@ while IFS= read -r raw || [[ -n "$raw" ]]; do
   read -r code host extra <<< "$line"
   [[ -z "$code" || -z "$host" ]]   && { echo "invalid line: $raw" >&2; exit 1; }
   [[ -n "$extra" ]]                && { echo "too many fields: $raw" >&2; exit 1; }
+  # Codes are reused as the MySQL option-group suffix (--defaults-group-suffix=_<code>)
+  # and as a path component in the per-host err file. Reject anything mysql wouldn't
+  # accept in a group name (silent fallback to [client] otherwise) and require an
+  # alphanumeric leading character so '..' / '.foo' / '-foo' can't escape the err dir.
+  [[ "$code" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*$ ]] || { echo "invalid country code in $COUNTRIES_FILE: $code (must start with [A-Za-z0-9] and contain only [A-Za-z0-9_.-])" >&2; exit 1; }
   [[ "$seen_codes" == *" $code "* ]] && { echo "duplicate code in $COUNTRIES_FILE: $code" >&2; exit 1; }
   seen_codes+="$code "
   entries+=("$code|$host")
@@ -242,7 +247,9 @@ fi
 for e in "${selected[@]}"; do
   IFS='|' read -r code host <<< "$e"
   printf '\n=== %s (%s) ===\n' "$code" "$host"
-  mysql_args=(--defaults-file="$MY_CNF" --ssl-mode=REQUIRED --host="$host")
+  # --defaults-group-suffix lets [client_<code>] in my.cnf override [client]
+  # for this specific host. Missing group → mysql falls back to [client].
+  mysql_args=(--defaults-file="$MY_CNF" --defaults-group-suffix="_$code" --ssl-mode=REQUIRED --host="$host")
   err_count=0
   if [[ "$continue_on_error" -eq 1 ]]; then
     mysql_args+=(--force)

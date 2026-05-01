@@ -3,3 +3,13 @@ user     = your_user
 password = "your_password"
 # If the password contains '#', ';', or whitespace it must be double-quoted —
 # MySQL's option-file parser treats unquoted '#' as the start of a comment.
+
+# Per-host credential override (optional).
+# sqlcast invokes mysql with `--defaults-group-suffix=_<code>` for every host,
+# where <code> is the country code from countries.conf. Add a [client_<code>]
+# section to override user/password (or any [client] option) for that host.
+# Hosts without a matching section fall back to [client] above silently.
+#
+# [client_us]
+# user     = us_user
+# password = "us_password"

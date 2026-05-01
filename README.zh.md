@@ -78,6 +78,22 @@ failed: (none)
 | `SQLCAST_ALLOW_DESTRUCTIVE` | `1` 等价于 `--allow-destructive` |
 | `SQLCAST_CONTINUE_ON_ERROR` | `1` 等价于 `--continue-on-error` |
 
+### 单 host 凭证覆盖
+
+默认所有 host 都用 `my.cnf` 里共享的 `[client]` group 认证。要给某个 host 用不同的登入凭证,加一段 `[client_<code>]`,`<code>` 即 `countries.conf` 里的国家码。sqlcast 调用 `mysql` 时透传 `--defaults-group-suffix=_<code>`:`[client_<code>]` 里写到的 option 覆盖 `[client]` 同名 option,没写的仍从 `[client]` 继承。没有对应段的 host 直接用 `[client]`。
+
+```ini
+# my.cnf
+[client]
+user     = shared_user
+password = "shared_password"
+
+[client_us]
+password = "us_only_password"   # user 自动从 [client] 继承
+```
+
+国家码也作为 option group 的 suffix 使用、并被拼进 per-host err 文件路径,因此必须落在 `[A-Za-z0-9_.-]` 内、首字符为字母或数字,`countries.conf` 解析时即校验。段名拼错(如 `[client_uss]`)会静默回落到 `[client]` —— 上线前用 `mysql --defaults-file=my.cnf --defaults-group-suffix=_us --print-defaults` 自己核一遍。
+
 ## 破坏性 SQL 守卫
 
 默认拦截以下语句并退出(码 2)。扫描前剥除注释和字符串字面量,所以注释里、字符串里出现不会误伤;`/*! … */`、`/*+ … */` 内部会被解包再扫(MySQL 实际会执行这些)。

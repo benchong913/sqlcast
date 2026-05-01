@@ -365,5 +365,52 @@ assert_contains "$out" "failed: us" \
   "rc!=0 host goes to failed even with --continue-on-error"
 assert_rc "$rc" 1 "failed host exits 1 under --continue-on-error"
 
+# --- per-host credential override ---
+
+# 21a. mysql receives --defaults-group-suffix=_<code> per host so an
+# optional [client_<code>] section in my.cnf can override [client].
+out="$(echo "SELECT 1" | "$SQLCAST" --only=us 2>&1)" || true
+assert_contains "$out" "--defaults-group-suffix=_us" \
+  "mysql receives --defaults-group-suffix=_us when running for us"
+
+# 21b. The suffix tracks the country code, not a fixed value.
+out="$(echo "SELECT 1" | "$SQLCAST" --only=in 2>&1)" || true
+assert_contains "$out" "--defaults-group-suffix=_in" \
+  "mysql receives --defaults-group-suffix=_in when running for in"
+
+# 21c. Multi-country run: each host gets its own suffix.
+out="$(echo "SELECT 1" | "$SQLCAST" --only=us,jp 2>&1)" || true
+assert_contains "$out" "--defaults-group-suffix=_us" \
+  "multi-country run includes _us suffix"
+assert_contains "$out" "--defaults-group-suffix=_jp" \
+  "multi-country run includes _jp suffix"
+
+# 21d. A countries.conf code that is not a valid MySQL option-group name
+# suffix is rejected at parse time so users don't silently lose their
+# override (mysql would just ignore an unparseable group name).
+BAD_CONF="$(mktemp -t sqlcast_badconf.XXXXXX)"
+cat > "$BAD_CONF" <<'EOF'
+us/east  us-db.example
+EOF
+out="$(echo "SELECT 1" | SQLCAST_COUNTRIES_FILE="$BAD_CONF" "$SQLCAST" 2>&1)"; rc=$?
+rm -f "$BAD_CONF"
+assert_contains "$out" "invalid country code" \
+  "country code with illegal chars is rejected"
+assert_rc "$rc" 1 "invalid country code exits 1"
+
+# 21e. Codes are also forbidden from starting with a non-alphanumeric — '..',
+# '.foo', '-foo' would otherwise sneak into err_file paths under
+# --continue-on-error (err_dir/${code}.err), and a leading dash could be
+# parsed as a flag if ever reused outside an array boundary.
+TRAV_CONF="$(mktemp -t sqlcast_travconf.XXXXXX)"
+cat > "$TRAV_CONF" <<'EOF'
+..  any-host.example
+EOF
+out="$(echo "SELECT 1" | SQLCAST_COUNTRIES_FILE="$TRAV_CONF" "$SQLCAST" 2>&1)"; rc=$?
+rm -f "$TRAV_CONF"
+assert_contains "$out" "invalid country code" \
+  "code starting with non-alphanumeric is rejected"
+assert_rc "$rc" 1 "leading-dot code exits 1"
+
 printf '\n--- %d passed, %d failed ---\n' "$pass" "$fail"
 [[ "$fail" -eq 0 ]] || exit 1

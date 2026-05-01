@@ -78,6 +78,22 @@ Environment variables (default to the script's own directory):
 | `SQLCAST_ALLOW_DESTRUCTIVE` | `1` is equivalent to `--allow-destructive` |
 | `SQLCAST_CONTINUE_ON_ERROR` | `1` is equivalent to `--continue-on-error` |
 
+### Per-host credential override
+
+By default every host authenticates with the shared `[client]` group in `my.cnf`. To give one host a different login, add a `[client_<code>]` section — `<code>` is the country code from `countries.conf`. sqlcast passes `--defaults-group-suffix=_<code>` to `mysql`, so options set in `[client_<code>]` override the same option in `[client]`; anything not set there is inherited. Hosts without a matching section use `[client]` unchanged.
+
+```ini
+# my.cnf
+[client]
+user     = shared_user
+password = "shared_password"
+
+[client_us]
+password = "us_only_password"   # user inherits from [client]
+```
+
+The country code is reused as the option-group suffix and as a path component for per-host error capture, so codes are restricted to `[A-Za-z0-9_.-]` and must begin with an alphanumeric — both validated when `countries.conf` is parsed. A typo'd section name silently falls back to `[client]` — verify with `mysql --defaults-file=my.cnf --defaults-group-suffix=_us --print-defaults` before relying on a new override.
+
 ## Destructive-SQL guard
 
 The following statements are refused by default (exit code 2). The scanner strips comments and string literals first, so `DROP` inside a comment or string literal won't false-positive; `/*! … */` and `/*+ … */` blocks are unwrapped before scanning, since MySQL actually executes their contents.
