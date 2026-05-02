@@ -1,6 +1,6 @@
 # sqlcast
 
-[English](README.md) | [中文](README.zh-CN.md)
+[English](README.md) | [简体中文](README.zh-CN.md) | [繁體中文](README.zh-TW.md)
 
 > Fan out one SQL script to many MySQL hosts — sequentially, with a guard against accidental DROPs.
 
